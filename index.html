@@ -69,6 +69,20 @@ td.cell.we{box-shadow:inset 2px 0 0 var(--surface),inset -2px 0 0 var(--surface)
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .legend .drop{position:static;vertical-align:-2px;margin-right:4px}
 
+/* gerenciar */
+details.manage{margin-top:20px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+details.manage summary{cursor:pointer;font-weight:600}
+.addrow{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.addrow input{flex:1 1 180px;font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.spotlist{list-style:none;margin:12px 0 0;padding:0}
+.spotlist li{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.spotlist li small{color:var(--muted)}
+.spotlist li .spacer{flex:1}
+.tag{font-size:11px;font-weight:600;color:var(--accent);border:1px solid currentColor;border-radius:5px;padding:0 5px}
+.hint{font-size:12px;color:var(--muted);margin:0 0 8px}
+.hint a{color:inherit}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+
 /* mapa */
 #map{height:62vh;min-height:360px;border-radius:12px;border:1px solid var(--line);z-index:0}
 .pin{transform:translate(-50%,calc(-100% - 6px));white-space:nowrap;font:600 12px/1.25 system-ui,sans-serif;padding:4px 8px;border-radius:8px;border:1px solid currentColor;box-shadow:0 1px 4px rgba(0,0,0,.25);position:relative;text-align:center}
@@ -78,6 +92,9 @@ td.cell.we{box-shadow:inset 2px 0 0 var(--surface),inset -2px 0 0 var(--surface)
 .leaflet-popup-content{font:13px/1.45 system-ui,sans-serif;margin:12px 14px}
 .leaflet-popup-content h3{margin:0 0 6px;font-size:14px}
 .pop-day{display:flex;justify-content:space-between;gap:12px;padding:2px 6px;border-radius:5px;margin:2px 0}
+.addform{display:grid;gap:6px;min-width:180px}
+.addform input,.addform button{font:inherit;padding:5px;border-radius:6px;border:1px solid #999;background:#fff;color:#1f2421}
+.addform button{cursor:pointer}
 
 .ranking{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
 .ranking li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:center}
@@ -116,6 +133,24 @@ footer a{color:inherit}
       <span><i class="bad"></i>Ruim</span>
       <span><svg class="drop" viewBox="0 0 10 13"><path d="M5 0C5 0 0 6 0 8.5a5 5 0 0 0 10 0C10 6 5 0 5 0z"/></svg>Rocha pode estar úmida (≥ 5 mm nos 2 dias anteriores)</span>
     </div>
+
+    <details class="manage">
+      <summary>Gerenciar picos</summary>
+      <form class="addrow" id="addForm">
+        <input type="text" id="addName" placeholder="Nome (ex.: Pedra do Baú)" required>
+        <input type="text" id="addRegion" placeholder="Cidade, UF (opcional)">
+        <input type="text" id="addCoords" placeholder="Coordenadas: -22.6870, -45.6600" required>
+        <button class="btn" type="submit">Adicionar</button>
+      </form>
+      <p class="hint">Dica: no Google Maps, clique com o botão direito no local e depois nas coordenadas para copiá-las. Também dá para clicar direto no mapa da aba "Mapa da viagem".</p>
+      <p class="hint">Picos adicionados ou removidos aqui valem <b>só neste navegador</b>. Para que todo mundo veja, clique em "Copiar JSON" e cole no
+        <a href="https://github.com/johnrinehart/janela-de-escalada/edit/main/picos.json" target="_blank" rel="noopener">picos.json do GitHub</a>.</p>
+      <ul class="spotlist" id="spotList"></ul>
+      <div class="actions">
+        <button class="btn" id="exportJson">Copiar JSON</button>
+        <button class="btn" id="resetLocal" hidden>Desfazer mudanças locais</button>
+      </div>
+    </details>
   </section>
 
   <section id="tab-map" hidden>
@@ -136,6 +171,8 @@ footer a{color:inherit}
 // ---------- config ----------
 const STORE_WE = 'janela-escalada:weekendOnly';
 const STORE_POS = 'janela-escalada:pos';
+const STORE_CUSTOM = 'janela-escalada:custom';   // picos adicionados neste navegador
+const STORE_HIDDEN = 'janela-escalada:hidden';   // ids do picos.json ocultados neste navegador
 const FORECAST_DAYS = 16, PAST_DAYS = 2, LIST_DAYS = 10;
 const WET_MM = 5;                    // chuva nos 2 dias anteriores que deixa a rocha úmida
 const ORDER = { good: 0, meh: 1, bad: 2, na: 3 };
@@ -143,7 +180,8 @@ const DROP = '<svg class="drop" viewBox="0 0 10 13"><path d="M5 0C5 0 0 6 0 8.5a
 
 // ---------- estado ----------
 const $ = s => document.querySelector(s);
-let spots = [];              // carregado de picos.json
+let baseSpots = [];          // picos.json (compartilhado)
+let spots = [];              // o que aparece: picos.json − ocultos + locais
 let wx = null;               // { [spotId]: { dates, prob, mm, tmax, tmin, wind } }
 let me = readStore(STORE_POS, null);   // { lat, lon } — última localização conhecida
 let weekendOnly = readStore(STORE_WE, false);
@@ -242,7 +280,14 @@ function rangeSummary(s, d1, d2) {
 async function loadSpots() {
   const r = await fetch('picos.json', { cache: 'no-cache' });
   if (!r.ok) throw new Error('picos.json: HTTP ' + r.status);
-  spots = await r.json();
+  baseSpots = await r.json();
+  buildSpots();
+}
+function buildSpots() {
+  const hidden = new Set(readStore(STORE_HIDDEN, []));
+  const custom = readStore(STORE_CUSTOM, []).map(s => ({ ...s, custom: true }));
+  spots = baseSpots.filter(s => !hidden.has(s.id)).map(s => ({ ...s })).concat(custom);
+  applyDistances();
 }
 async function fetchWeather() {
   if (!spots.length) { wx = {}; renderAll(); setStatus('Nenhum pico em picos.json'); return; }
@@ -305,11 +350,65 @@ function cellHtml(w, d) {
   return `<td class="cell ${x.rating}${we}" title="${esc(tip)}"><b>${fmtP(x.prob)}</b><span>${fmtMm(x.mm)}</span>${x.wet ? DROP : ''}</td>`;
 }
 
+// ---------- gerenciar ----------
+function renderSpotList() {
+  $('#spotList').innerHTML = spots.map(s =>
+    `<li><span><b>${esc(s.name)}</b> ${s.custom ? '<span class="tag">só aqui</span>' : ''}<br>
+       <small>${esc(s.region || '')}${s.region ? ' · ' : ''}${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</small></span>
+     <span class="spacer"></span><button class="btn" data-remove="${esc(s.id)}">Remover</button></li>`).join('');
+  const changed = readStore(STORE_CUSTOM, []).length || readStore(STORE_HIDDEN, []).length;
+  $('#resetLocal').hidden = !changed;
+}
+function addSpot(name, region, lat, lon) {
+  name = name.trim();
+  if (!name || !isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return false;
+  const custom = readStore(STORE_CUSTOM, []);
+  custom.push({ id: 'c-' + Date.now().toString(36), name, region: region.trim(), lat: +lat.toFixed(5), lon: +lon.toFixed(5) });
+  writeStore(STORE_CUSTOM, custom);
+  buildSpots(); renderSpotList(); fetchWeather();
+  return true;
+}
+function removeSpot(id) {
+  const s = spots.find(x => x.id === id); if (!s) return;
+  if (!confirm(`Remover "${s.name}"?`)) return;
+  if (s.custom) writeStore(STORE_CUSTOM, readStore(STORE_CUSTOM, []).filter(x => x.id !== id));
+  else writeStore(STORE_HIDDEN, [...new Set([...readStore(STORE_HIDDEN, []), id])]);
+  buildSpots(); renderSpotList(); renderAll();
+}
+async function exportJson() {
+  const list = spots.slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(({ id, name, region, lat, lon }) =>
+    '  ' + JSON.stringify({ id: id.startsWith('c-') ? slug(name) : id, name, region: region || '', lat, lon }));
+  const text = '[\n' + list.join(',\n') + '\n]\n';
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('JSON copiado. Cole no picos.json do GitHub para publicar para todos.');
+  } catch {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.download = 'picos.json'; a.click();
+  }
+}
+const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
 // ---------- aba mapa ----------
 function initMap() {
   map = L.map('map', { zoomControl: true }).setView([-21, -46], 5);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenStreetMap' }).addTo(map);
   layer = L.layerGroup().addTo(map);
+  map.on('click', onMapClick);
+}
+function onMapClick(e) {
+  const { lat, lng } = e.latlng;
+  const popup = L.popup().setLatLng(e.latlng).setContent(
+    `<form class="addform"><b>Novo pico aqui?</b>
+     <input name="label" placeholder="Nome" required><input name="region" placeholder="Cidade, UF (opcional)">
+     <small>${lat.toFixed(4)}, ${lng.toFixed(4)}</small><button type="submit">Adicionar</button></form>`).openOn(map);
+  const form = popup.getElement().querySelector('form');
+  form.elements.label.focus();
+  form.addEventListener('submit', ev => {
+    ev.preventDefault(); map.closePopup();
+    addSpot(form.elements.label.value, form.elements.region.value, lat, lng);
+  });
 }
 function renderMap() {
   if (!map) return;
@@ -382,6 +481,22 @@ $('#ranking').addEventListener('click', e => {
   if (s && s._marker) { map.setView([s.lat, s.lon], Math.max(map.getZoom(), 8)); s._marker.openPopup(); }
 });
 ['#d1', '#d2'].forEach(id => $(id).addEventListener('change', renderMap));
+$('#addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const m = $('#addCoords').value.match(/(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)/);
+  const num = s => parseFloat(s.replace(',', '.'));
+  if (!m || !addSpot($('#addName').value, $('#addRegion').value, num(m[1]), num(m[2]))) {
+    alert('Não entendi as coordenadas. Use o formato: -22.6870, -45.6600'); return;
+  }
+  e.target.reset();
+});
+$('#spotList').addEventListener('click', e => { const id = e.target.dataset.remove; if (id) removeSpot(id); });
+$('#exportJson').addEventListener('click', exportJson);
+$('#resetLocal').addEventListener('click', () => {
+  if (!confirm('Apagar os picos adicionados e mostrar de novo os removidos neste navegador?')) return;
+  writeStore(STORE_CUSTOM, []); writeStore(STORE_HIDDEN, []);
+  buildSpots(); renderSpotList(); fetchWeather();
+});
 
 // datas padrão: próximo fim de semana
 (() => {
@@ -393,7 +508,7 @@ $('#ranking').addEventListener('click', e => {
 
 (async () => {
   try { await loadSpots(); } catch (e) { setStatus('Não consegui carregar os picos (' + e.message + ')'); return; }
-  applyDistances(); updateLocText(); renderGrid();
+  updateLocText(); renderSpotList(); renderGrid();
   locate();                 // pede permissão na primeira visita; nas próximas usa a posição salva enquanto atualiza
   fetchWeather();
 })();
