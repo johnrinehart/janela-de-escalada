@@ -12,7 +12,7 @@ Previsão do [Open-Meteo](https://open-meteo.com/) (gratuito, sem chave). Mapa c
 Edite [`picos.json`](picos.json) e faça push. Cada pico:
 
 ```json
-{ "id": "bau", "name": "Pedra do Baú", "region": "São Bento do Sapucaí, SP", "lat": -22.6870, "lon": -45.7330 }
+{ "id": "bau", "name": "Pedra do Baú", "region": "São Bento do Sapucaí, SP", "lat": -22.6870, "lon": -45.6600 }
 ```
 
 `id` precisa ser único. As coordenadas de exemplo são aproximadas.
