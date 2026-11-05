@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Janela de Escalada</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <style>
 :root{
   --bg:#f6f4ef; --surface:#ffffff; --ink:#1f2421; --muted:#6b706c; --line:#e3dfd6;
@@ -89,6 +90,9 @@ details.manage summary{cursor:pointer;font-weight:600}
 .pin b{display:block;font-size:13px}
 .pin:after{content:"";position:absolute;left:50%;bottom:-6px;width:10px;height:10px;margin-left:-5px;background:inherit;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg)}
 .pin-wrap{background:none;border:0}
+.cluster{transform:translate(-50%,-50%);width:46px;height:46px;border-radius:50%;border:2px solid currentColor;box-shadow:0 1px 5px rgba(0,0,0,.3);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font:600 10px/1 system-ui,sans-serif;cursor:pointer}
+.cluster b{font-size:17px;line-height:1.05}
 .leaflet-popup-content{font:13px/1.45 system-ui,sans-serif;margin:12px 14px}
 .leaflet-popup-content h3{margin:0 0 6px;font-size:14px}
 .pop-day{display:flex;justify-content:space-between;gap:12px;padding:2px 6px;border-radius:5px;margin:2px 0}
@@ -159,6 +163,7 @@ footer a{color:inherit}
       <label>Volta <input type="date" id="d2"></label>
       <span id="rangeNote"></span>
     </div>
+    <p class="hint">Círculos agrupam picos próximos e mostram quantos são; a cor é a do melhor pico do grupo. Clique ou dê zoom para separar.</p>
     <div id="map"></div>
     <ol class="ranking" id="ranking"></ol>
   </section>
@@ -167,6 +172,7 @@ footer a{color:inherit}
 <footer>Previsão: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Mapa: © OpenStreetMap · Distâncias em linha reta. Sua localização é usada só no seu navegador.</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <script>
 // ---------- config ----------
 const STORE_WE = 'janela-escalada:weekendOnly';
@@ -185,7 +191,7 @@ let spots = [];              // o que aparece: picos.json − ocultos + locais
 let wx = null;               // { [spotId]: { dates, prob, mm, tmax, tmin, wind } }
 let me = readStore(STORE_POS, null);   // { lat, lon } — última localização conhecida
 let weekendOnly = readStore(STORE_WE, false);
-let map = null, layer = null, fitted = false;
+let map = null, layer = null, cluster = null, fitted = false;
 
 function readStore(k, dflt) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? dflt; } catch { return dflt; } }
 function writeStore(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -394,7 +400,19 @@ const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().repla
 function initMap() {
   map = L.map('map', { zoomControl: true }).setView([-21, -46], 5);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenStreetMap' }).addTo(map);
-  layer = L.layerGroup().addTo(map);
+  layer = L.layerGroup().addTo(map);          // marcador "você"
+  cluster = L.markerClusterGroup({
+    maxClusterRadius: 80,                     // rótulos são largos: agrupa o que ficaria sobreposto
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    iconCreateFunction: c => {
+      const ms = c.getAllChildMarkers();
+      const best = ms.map(m => m.options.rating).reduce((a, b) => ORDER[b] < ORDER[a] ? b : a, 'na');
+      const names = ms.map(m => m.options.title).sort((a, b) => a.localeCompare(b, 'pt-BR')).join(', ');
+      return L.divIcon({ className: 'pin-wrap', iconSize: null,
+        html: `<div class="cluster ${best}" title="${esc(names)}"><b>${ms.length}</b>picos</div>` });
+    },
+  }).addTo(map);
   map.on('click', onMapClick);
 }
 function onMapClick(e) {
@@ -424,12 +442,13 @@ function renderMap() {
   if (me) L.circleMarker([me.lat, me.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2f7fd1', fillOpacity: 1 })
     .addTo(layer).bindTooltip('Você');
 
-  rows.forEach(({ s, r }) => {
+  cluster.clearLayers();
+  cluster.addLayers(rows.map(({ s, r }) => {
     const label = r.rating === 'na' ? 'sem previsão' : `${Math.round(r.maxProb)}% · ${r.sumMm.toFixed(1)} mm`;
     const icon = L.divIcon({ className: 'pin-wrap', iconSize: null,
       html: `<div class="pin ${r.rating}">${esc(s.name)}<b>${label}</b></div>` });
-    s._marker = L.marker([s.lat, s.lon], { icon }).addTo(layer).bindPopup(popupHtml(s, r));
-  });
+    return s._marker = L.marker([s.lat, s.lon], { icon, rating: r.rating, title: s.name }).bindPopup(popupHtml(s, r));
+  }));
 
   // melhor previsão primeiro; empate decidido pela distância
   rows.sort((a, b) => ORDER[a.r.rating] - ORDER[b.r.rating] || (a.s.km ?? 0) - (b.s.km ?? 0));
@@ -478,7 +497,7 @@ $('#weekendOnly').addEventListener('change', e => {
 $('#ranking').addEventListener('click', e => {
   const li = e.target.closest('[data-focus]'); if (!li) return;
   const s = spots.find(x => x.id === li.dataset.focus);
-  if (s && s._marker) { map.setView([s.lat, s.lon], Math.max(map.getZoom(), 8)); s._marker.openPopup(); }
+  if (s && s._marker) cluster.zoomToShowLayer(s._marker, () => s._marker.openPopup());
 });
 ['#d1', '#d2'].forEach(id => $(id).addEventListener('change', renderMap));
 $('#addForm').addEventListener('submit', e => {
