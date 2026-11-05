@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Janela de Escalada</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#f6f4ef; --surface:#ffffff; --ink:#1f2421; --muted:#6b706c; --line:#e3dfd6;
+  --accent:#c2562b;
+  --good:#23794b; --good-bg:#dff1e5;
+  --meh:#946c00; --meh-bg:#fbefcc;
+  --bad:#b23324; --bad-bg:#f8dcd7;
+  --na:#7d837f; --na-bg:#ecebe6;
+  --we:#f1e7da;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141715; --surface:#1d211f; --ink:#e8ebe9; --muted:#99a19c; --line:#2e3431;
+    --accent:#e07a4f;
+    --good:#6fd39a; --good-bg:#17382a;
+    --meh:#e8c15a; --meh-bg:#3a3216;
+    --bad:#f28a7b; --bad-bg:#40201b;
+    --na:#8d948f; --na-bg:#262a28;
+    --we:#2a2620;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:16px;max-width:1200px;margin:0 auto}
+header h1{font-size:20px;margin:0;letter-spacing:-.01em}
+header h1 span{color:var(--accent)}
+nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px}
+nav button{border:0;background:none;color:var(--muted);font:inherit;padding:6px 14px;border-radius:7px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+main{max-width:1200px;margin:0 auto;padding:0 16px 40px}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:4px 0 12px;color:var(--muted);font-size:13px}
+.toolbar .spacer{flex:1}
+.toolbar label{display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+button.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:13px;padding:6px 12px;border-radius:8px;cursor:pointer}
+button.btn:hover{border-color:var(--muted)}
+input[type=date]{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+
+/* grade de previsão */
+.grid-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:separate;border-spacing:0;width:100%}
+th,td{padding:0}
+thead th{font-size:12px;font-weight:600;color:var(--muted);padding:8px 4px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+thead th span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+thead th.we{color:var(--accent);background:var(--we)}
+th.spot,th.spot-h{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;padding:8px 12px;min-width:170px;border-right:1px solid var(--line)}
+th.spot b{display:block;font-size:14px}
+th.spot small{color:var(--muted);font-weight:400;font-size:12px}
+th.spot .km{color:var(--accent);font-weight:600}
+tbody tr+tr th,tbody tr+tr td{border-top:1px solid var(--line)}
+td.cell{text-align:center;min-width:66px;padding:7px 4px;position:relative;cursor:default}
+td.cell b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+td.cell span{display:block;font-size:12px;opacity:.85;font-variant-numeric:tabular-nums}
+td.cell.we{box-shadow:inset 2px 0 0 var(--surface),inset -2px 0 0 var(--surface)}
+.good{background:var(--good-bg);color:var(--good)}
+.meh{background:var(--meh-bg);color:var(--meh)}
+.bad{background:var(--bad-bg);color:var(--bad)}
+.na{background:var(--na-bg);color:var(--na)}
+.drop{position:absolute;top:4px;right:4px;width:9px;height:12px;fill:#2f7fd1}
+.empty{padding:24px;color:var(--muted);text-align:center}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin:10px 2px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.legend .drop{position:static;vertical-align:-2px;margin-right:4px}
+
+/* mapa */
+#map{height:62vh;min-height:360px;border-radius:12px;border:1px solid var(--line);z-index:0}
+.pin{transform:translate(-50%,calc(-100% - 6px));white-space:nowrap;font:600 12px/1.25 system-ui,sans-serif;padding:4px 8px;border-radius:8px;border:1px solid currentColor;box-shadow:0 1px 4px rgba(0,0,0,.25);position:relative;text-align:center}
+.pin b{display:block;font-size:13px}
+.pin:after{content:"";position:absolute;left:50%;bottom:-6px;width:10px;height:10px;margin-left:-5px;background:inherit;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg)}
+.pin-wrap{background:none;border:0}
+.leaflet-popup-content{font:13px/1.45 system-ui,sans-serif;margin:12px 14px}
+.leaflet-popup-content h3{margin:0 0 6px;font-size:14px}
+.pop-day{display:flex;justify-content:space-between;gap:12px;padding:2px 6px;border-radius:5px;margin:2px 0}
+
+.ranking{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.ranking li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:center}
+.ranking li:hover{border-color:var(--muted)}
+.ranking .badge{min-width:76px;text-align:center;border-radius:8px;padding:4px 6px;font-size:12px;font-weight:600}
+.ranking .badge b{display:block;font-size:15px}
+.ranking .name{font-weight:600}
+.ranking small{display:block;color:var(--muted);font-size:12px}
+footer{max-width:1200px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:var(--muted)}
+footer a{color:inherit}
+</style>
+</head>
+<body>
+<header>
+  <h1>Janela de <span>Escalada</span></h1>
+  <nav role="tablist">
+    <button role="tab" data-tab="list" aria-selected="true">Picos</button>
+    <button role="tab" data-tab="map" aria-selected="false">Mapa da viagem</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-list">
+    <div class="toolbar">
+      <label><input type="checkbox" id="weekendOnly"> Só fins de semana</label>
+      <span id="loc"></span>
+      <button class="btn" id="locate">Usar minha localização</button>
+      <span class="spacer"></span>
+      <span id="status">Carregando…</span>
+      <button class="btn" id="refresh">Atualizar</button>
+    </div>
+    <div class="grid-wrap"><table id="grid"></table></div>
+    <div class="legend">
+      <span><i class="good"></i>Bom: chance &lt; 30% e &lt; 1 mm</span>
+      <span><i class="meh"></i>Atenção: chance &lt; 60% e &lt; 5 mm</span>
+      <span><i class="bad"></i>Ruim</span>
+      <span><svg class="drop" viewBox="0 0 10 13"><path d="M5 0C5 0 0 6 0 8.5a5 5 0 0 0 10 0C10 6 5 0 5 0z"/></svg>Rocha pode estar úmida (≥ 5 mm nos 2 dias anteriores)</span>
+    </div>
+  </section>
+
+  <section id="tab-map" hidden>
+    <div class="toolbar">
+      <label>Ida <input type="date" id="d1"></label>
+      <label>Volta <input type="date" id="d2"></label>
+      <span id="rangeNote"></span>
+    </div>
+    <div id="map"></div>
+    <ol class="ranking" id="ranking"></ol>
+  </section>
+</main>
+
+<footer>Previsão: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Mapa: © OpenStreetMap · Distâncias em linha reta. Sua localização é usada só no seu navegador.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ---------- config ----------
+const STORE_WE = 'janela-escalada:weekendOnly';
+const STORE_POS = 'janela-escalada:pos';
+const FORECAST_DAYS = 16, PAST_DAYS = 2, LIST_DAYS = 10;
+const WET_MM = 5;                    // chuva nos 2 dias anteriores que deixa a rocha úmida
+const ORDER = { good: 0, meh: 1, bad: 2, na: 3 };
+const DROP = '<svg class="drop" viewBox="0 0 10 13"><path d="M5 0C5 0 0 6 0 8.5a5 5 0 0 0 10 0C10 6 5 0 5 0z"/></svg>';
+
+// ---------- estado ----------
+const $ = s => document.querySelector(s);
+let spots = [];              // carregado de picos.json
+let wx = null;               // { [spotId]: { dates, prob, mm, tmax, tmin, wind } }
+let me = readStore(STORE_POS, null);   // { lat, lon } — última localização conhecida
+let weekendOnly = readStore(STORE_WE, false);
+let map = null, layer = null, fitted = false;
+
+function readStore(k, dflt) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? dflt; } catch { return dflt; } }
+function writeStore(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+// ---------- datas ----------
+const pad = n => String(n).padStart(2, '0');
+const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fromISO = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const WD = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const wd = s => WD[fromISO(s).getDay()];
+const dm = s => s.slice(8, 10) + '/' + s.slice(5, 7);
+const isWeekend = s => { const g = fromISO(s).getDay(); return g === 0 || g === 6; };
+function listDates(a, b) {
+  if (!a || !b) return [];
+  if (b < a) [a, b] = [b, a];
+  const out = []; let d = fromISO(a);
+  while (toISO(d) <= b && out.length < 31) { out.push(toISO(d)); d = addDays(d, 1); }
+  return out;
+}
+
+// ---------- formatação ----------
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtP = p => p == null ? '?%' : Math.round(p) + '%';
+const fmtMm = m => m == null ? '– mm' : (m < 0.1 ? '0 mm' : m.toFixed(1) + ' mm');
+const fmtT = t => t == null ? '?' : Math.round(t) + '°';
+const fmtKm = km => km == null ? '' : (km < 10 ? km.toFixed(1) : Math.round(km)) + ' km';
+
+// ---------- distância ----------
+function haversineKm(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function applyDistances() {
+  if (!me) { spots.forEach(s => s.km = null); return; }
+  spots.forEach(s => s.km = haversineKm(me, s));
+  spots.sort((a, b) => a.km - b.km);
+}
+function locate() {
+  if (!navigator.geolocation) { setLoc('Seu navegador não informa a localização.'); return; }
+  setLoc('Obtendo sua localização…');
+  navigator.geolocation.getCurrentPosition(p => {
+    me = { lat: p.coords.latitude, lon: p.coords.longitude };
+    writeStore(STORE_POS, me);
+    applyDistances(); updateLocText(); renderAll();
+  }, () => {
+    updateLocText(me ? 'Usando sua última localização conhecida.' : 'Sem acesso à localização, então os picos estão na ordem padrão.');
+  }, { timeout: 10000, maximumAge: 30 * 60 * 1000 });
+}
+function updateLocText(extra) {
+  setLoc(extra || (me ? 'Ordenado pela distância até você' : 'Ordem padrão'));
+  $('#locate').textContent = me ? 'Atualizar localização' : 'Usar minha localização';
+}
+function setLoc(t) { $('#loc').textContent = t; }
+
+// ---------- regra de decisão ----------
+function rate(prob, mm) {
+  if (prob == null && mm == null) return 'na';
+  const p = prob ?? 0, m = mm ?? 0;
+  if (p < 30 && m < 1) return 'good';
+  if (p < 60 && m < 5) return 'meh';
+  return 'bad';
+}
+function dayInfo(w, date) {
+  if (!w) return null;
+  const i = w.dates.indexOf(date);
+  if (i < 0) return null;
+  const before = (w.mm[i - 1] || 0) + (w.mm[i - 2] || 0);
+  return {
+    prob: w.prob[i], mm: w.mm[i], tmax: w.tmax[i], tmin: w.tmin[i], wind: w.wind[i],
+    before, wet: before >= WET_MM, rating: rate(w.prob[i], w.mm[i]),
+  };
+}
+function rangeSummary(s, d1, d2) {
+  const w = wx && wx[s.id];
+  const dates = listDates(d1, d2);
+  const days = dates.map(d => ({ d, x: dayInfo(w, d) }));
+  const known = days.filter(o => o.x);
+  if (!known.length) return { rating: 'na', days, known: 0, total: dates.length };
+  return {
+    rating: known.map(o => o.x.rating).reduce((a, b) => ORDER[b] > ORDER[a] ? b : a, 'good'),
+    maxProb: Math.max(...known.map(o => o.x.prob ?? 0)),
+    sumMm: known.reduce((a, o) => a + (o.x.mm || 0), 0),
+    wetStart: !!(days[0].x && days[0].x.wet),
+    days, known: known.length, total: dates.length,
+  };
+}
+
+// ---------- dados ----------
+async function loadSpots() {
+  const r = await fetch('picos.json', { cache: 'no-cache' });
+  if (!r.ok) throw new Error('picos.json: HTTP ' + r.status);
+  spots = await r.json();
+}
+async function fetchWeather() {
+  if (!spots.length) { wx = {}; renderAll(); setStatus('Nenhum pico em picos.json'); return; }
+  setStatus('Buscando previsão…');
+  const list = spots.slice();          // a ordem pode mudar (localização) enquanto a requisição está no ar
+  const q = new URLSearchParams({
+    latitude: list.map(s => s.lat.toFixed(4)).join(','),
+    longitude: list.map(s => s.lon.toFixed(4)).join(','),
+    daily: 'precipitation_probability_max,precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max',
+    timezone: 'auto', forecast_days: FORECAST_DAYS, past_days: PAST_DAYS,
+  });
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?' + q);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    let data = await r.json();
+    if (!Array.isArray(data)) data = [data];
+    wx = {};
+    list.forEach((s, i) => {
+      const d = data[i] && data[i].daily; if (!d) return;
+      wx[s.id] = { dates: d.time, prob: d.precipitation_probability_max, mm: d.precipitation_sum,
+                   tmax: d.temperature_2m_max, tmin: d.temperature_2m_min, wind: d.wind_speed_10m_max };
+    });
+    const now = new Date();
+    setStatus(`Atualizado às ${pad(now.getHours())}:${pad(now.getMinutes())}`);
+  } catch (e) {
+    setStatus('Não consegui buscar a previsão (' + e.message + ')');
+  }
+  renderAll();
+}
+function setStatus(t) { $('#status').textContent = t; }
+
+// ---------- aba lista ----------
+function renderGrid() {
+  const table = $('#grid');
+  if (!spots.length) { table.innerHTML = '<tr><td class="empty">Nenhum pico cadastrado.</td></tr>'; return; }
+  if (!wx) { table.innerHTML = '<tr><td class="empty">Carregando previsão…</td></tr>'; return; }
+  const ref = spots.map(s => wx[s.id]).find(Boolean);
+  if (!ref) { table.innerHTML = '<tr><td class="empty">Sem dados de previsão.</td></tr>'; return; }
+  const today = toISO(new Date());
+  let days = ref.dates.filter(d => d >= today);
+  days = weekendOnly ? days.filter(isWeekend) : days.slice(0, LIST_DAYS);
+
+  let h = '<thead><tr><th class="spot-h">Pico</th>' +
+    days.map(d => `<th class="${isWeekend(d) ? 'we' : ''}"><span>${d === today ? 'Hoje' : wd(d)}</span>${dm(d)}</th>`).join('') +
+    '</tr></thead><tbody>';
+  for (const s of spots) {
+    const km = s.km != null ? `<span class="km">${fmtKm(s.km)}</span> · ` : '';
+    h += `<tr><th class="spot"><b>${esc(s.name)}</b><small>${km}${esc(s.region || '')}</small></th>`;
+    for (const d of days) h += cellHtml(wx[s.id], d);
+    h += '</tr>';
+  }
+  table.innerHTML = h + '</tbody>';
+}
+function cellHtml(w, d) {
+  const x = dayInfo(w, d), we = isWeekend(d) ? ' we' : '';
+  if (!x) return `<td class="cell na${we}"><b>–</b></td>`;
+  const tip = `${wd(d)} ${dm(d)} · ${fmtT(x.tmin)} a ${fmtT(x.tmax)}` +
+    (x.wind != null ? ` · vento até ${Math.round(x.wind)} km/h` : '') +
+    (x.wet ? ` · choveu ${x.before.toFixed(1)} mm nos 2 dias anteriores` : '');
+  return `<td class="cell ${x.rating}${we}" title="${esc(tip)}"><b>${fmtP(x.prob)}</b><span>${fmtMm(x.mm)}</span>${x.wet ? DROP : ''}</td>`;
+}
+
+// ---------- aba mapa ----------
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([-21, -46], 5);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenStreetMap' }).addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+function renderMap() {
+  if (!map) return;
+  layer.clearLayers();
+  const d1 = $('#d1').value, d2 = $('#d2').value;
+  const rows = spots.map(s => ({ s, r: rangeSummary(s, d1, d2) }));
+
+  const ref = wx && spots.map(s => wx[s.id]).find(Boolean);
+  const last = ref ? ref.dates[ref.dates.length - 1] : null;
+  $('#rangeNote').textContent = last && listDates(d1, d2).some(d => d > last)
+    ? `A previsão só vai até ${dm(last)}. Os dias depois disso aparecem como "sem previsão".` : '';
+
+  if (me) L.circleMarker([me.lat, me.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#2f7fd1', fillOpacity: 1 })
+    .addTo(layer).bindTooltip('Você');
+
+  rows.forEach(({ s, r }) => {
+    const label = r.rating === 'na' ? 'sem previsão' : `${Math.round(r.maxProb)}% · ${r.sumMm.toFixed(1)} mm`;
+    const icon = L.divIcon({ className: 'pin-wrap', iconSize: null,
+      html: `<div class="pin ${r.rating}">${esc(s.name)}<b>${label}</b></div>` });
+    s._marker = L.marker([s.lat, s.lon], { icon }).addTo(layer).bindPopup(popupHtml(s, r));
+  });
+
+  // melhor previsão primeiro; empate decidido pela distância
+  rows.sort((a, b) => ORDER[a.r.rating] - ORDER[b.r.rating] || (a.s.km ?? 0) - (b.s.km ?? 0));
+  $('#ranking').innerHTML = rows.map(({ s, r }) => `
+    <li data-focus="${esc(s.id)}">
+      <div class="badge ${r.rating}">${r.rating === 'na' ? '<b>—</b>sem previsão' : `<b>${Math.round(r.maxProb)}%</b>${r.sumMm.toFixed(1)} mm`}</div>
+      <div><div class="name">${esc(s.name)}</div>
+      <small>${s.km != null ? fmtKm(s.km) + ' · ' : ''}${r.rating === 'na' ? 'fora do horizonte de previsão' : `chance máx. e chuva total${r.known < r.total ? ` (${r.known} de ${r.total} dias com previsão)` : ''}`}</small>
+      ${r.wetStart ? '<small>⚠ choveu antes da ida, a rocha pode estar úmida</small>' : ''}</div>
+    </li>`).join('');
+
+  if (!fitted && spots.length) { map.fitBounds(L.latLngBounds(spots.map(s => [s.lat, s.lon])).pad(0.25)); fitted = true; }
+}
+function popupHtml(s, r) {
+  const rows = r.days.map(({ d, x }) => x
+    ? `<div class="pop-day ${x.rating}"><span>${wd(d)} ${dm(d)}</span><span>${fmtP(x.prob)} · ${fmtMm(x.mm)} · ${fmtT(x.tmax)}</span></div>`
+    : `<div class="pop-day na"><span>${wd(d)} ${dm(d)}</span><span>sem previsão</span></div>`).join('');
+  return `<h3>${esc(s.name)}</h3>${s.km != null ? `<div style="margin:-4px 0 6px;opacity:.7">${fmtKm(s.km)} de você (em linha reta)</div>` : ''}${rows}
+    ${r.wetStart ? `<p style="margin:6px 0 0">Choveu ${r.days[0].x.before.toFixed(1)} mm nos 2 dias antes da ida.</p>` : ''}
+    <p style="margin:8px 0 0"><a href="https://www.windy.com/${s.lat.toFixed(3)}/${s.lon.toFixed(3)}?rain,${s.lat.toFixed(3)},${s.lon.toFixed(3)},10" target="_blank" rel="noopener">Abrir no Windy ↗</a></p>`;
+}
+
+function renderAll() { renderGrid(); renderMap(); }
+
+function showTab(name) {
+  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+  $('#tab-list').hidden = name !== 'list';
+  $('#tab-map').hidden = name !== 'map';
+  if (name === 'map') {
+    if (!map) initMap();
+    map.invalidateSize();
+    renderMap();
+  }
+}
+
+// ---------- eventos ----------
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('#refresh').addEventListener('click', fetchWeather);
+$('#locate').addEventListener('click', locate);
+$('#weekendOnly').checked = weekendOnly;
+$('#weekendOnly').addEventListener('change', e => {
+  weekendOnly = e.target.checked;
+  writeStore(STORE_WE, weekendOnly);
+  renderGrid();
+});
+$('#ranking').addEventListener('click', e => {
+  const li = e.target.closest('[data-focus]'); if (!li) return;
+  const s = spots.find(x => x.id === li.dataset.focus);
+  if (s && s._marker) { map.setView([s.lat, s.lon], Math.max(map.getZoom(), 8)); s._marker.openPopup(); }
+});
+['#d1', '#d2'].forEach(id => $(id).addEventListener('change', renderMap));
+
+// datas padrão: próximo fim de semana
+(() => {
+  const t = new Date(), g = t.getDay();
+  const sat = g === 0 ? t : addDays(t, 6 - g);
+  const sun = g === 0 ? t : addDays(sat, 1);
+  $('#d1').value = toISO(sat); $('#d2').value = toISO(sun);
+})();
+
+(async () => {
+  try { await loadSpots(); } catch (e) { setStatus('Não consegui carregar os picos (' + e.message + ')'); return; }
+  applyDistances(); updateLocText(); renderGrid();
+  locate();                 // pede permissão na primeira visita; nas próximas usa a posição salva enquanto atualiza
+  fetchWeather();
+})();
+</script>
+</body>
+</html>

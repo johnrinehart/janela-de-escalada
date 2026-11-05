@@ -1,0 +1,8 @@
+[
+  { "id": "bau",        "name": "Pedra do Baú",         "region": "São Bento do Sapucaí, SP", "lat": -22.6870, "lon": -45.7330 },
+  { "id": "itatiaia",   "name": "Prateleiras",          "region": "Itatiaia, RJ",             "lat": -22.3790, "lon": -44.6800 },
+  { "id": "urca",       "name": "Urca / Pão de Açúcar", "region": "Rio de Janeiro, RJ",       "lat": -22.9500, "lon": -43.1560 },
+  { "id": "cipo",       "name": "Serra do Cipó",        "region": "Santana do Riacho, MG",    "lat": -19.3000, "lon": -43.6000 },
+  { "id": "anhangava",  "name": "Anhangava",            "region": "Quatro Barras, PR",        "lat": -25.3900, "lon": -49.0000 },
+  { "id": "cocalzinho", "name": "Cocalzinho",           "region": "Cocalzinho de Goiás, GO",  "lat": -15.7900, "lon": -48.7700 }
+]
